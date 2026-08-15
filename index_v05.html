@@ -1,0 +1,139 @@
+<!doctype html><html lang="es"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Almacén v0.5</title>
+<style>
+body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;margin:0;background:#f2f2f7;color:#111}
+header{background:#111827;color:#fff;padding:18px 16px;position:sticky;top:0;z-index:2}
+main{padding:16px;max-width:720px;margin:auto}.card{background:#fff;border-radius:18px;padding:16px;margin-bottom:14px}
+button,.fake{display:block;border:0;border-radius:14px;padding:14px;background:#111827;color:white;font-size:16px;font-weight:700;text-align:center;box-sizing:border-box}
+.alt{background:#e5e7eb!important;color:#111!important}.grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+input,textarea,select{width:100%;box-sizing:border-box;padding:12px;border:1px solid #d1d5db;border-radius:12px;font-size:16px}
+textarea{min-height:140px}.hidden{display:none}.small{font-size:14px;color:#6b7280}.item{padding:10px 0;border-bottom:1px solid #eee}
+.pill{display:inline-block;padding:4px 8px;border-radius:999px;background:#eee;font-weight:800;margin-left:6px}
+.route{border-left:5px solid #111827;padding-left:10px}.warn{border-left-color:#d97706}
+#preview{width:100%;border-radius:14px;margin-top:12px;display:none}
+nav{position:fixed;bottom:0;left:0;right:0;background:white;border-top:1px solid #ddd;display:flex;justify-content:space-around;padding:8px 8px calc(8px + env(safe-area-inset-bottom))}
+nav button{background:white;color:#333;font-size:12px;padding:6px}.space{height:80px}
+</style><script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script></head><body>
+<header><b style="font-size:22px">📦 Almacén</b><div style="font-size:13px;color:#cbd5e1">v0.5 · OCR diagnóstico</div></header>
+<main>
+<section id="home"><div class="card"><h2>Inicio</h2><div class="grid">
+<button onclick="go('scan')">📷 Foto albarán</button><button onclick="go('pedido')">📋 Preparar pedido</button>
+<button onclick="go('catalogo')">📚 Catálogo</button><button onclick="go('nuevo')">➕ Añadir</button>
+</div></div><div class="card"><b id="count"></b><div class="small">Guardadas en este iPhone.</div></div></section>
+
+<section id="scan" class="hidden"><div class="card"><h2>📷 Foto del albarán</h2>
+<div class="grid">
+<label class="fake">📷 Hacer foto<input id="cameraPhoto" type="file" accept="image/*" capture="environment" class="hidden" onchange="photoSelected(event)"></label>
+<label class="fake alt">🖼️ Elegir de Fotos<input id="libraryPhoto" type="file" accept="image/*" class="hidden" onchange="photoSelected(event)"></label>
+</div>
+<img id="preview">
+<div id="ocrStatus" class="small" style="margin-top:10px">Selecciona o haz una foto. La app leerá el albarán automáticamente.</div>
+<div id="ocrProgress" style="height:8px;background:#e5e7eb;border-radius:999px;margin-top:8px;overflow:hidden"><div id="ocrBar" style="height:100%;width:0;background:#111827"></div></div>
+<button id="readBtn" style="width:100%;margin-top:10px" onclick="readReceipt()" disabled>🔎 Leer albarán</button>
+<textarea id="scanText" placeholder="Aquí aparecerá el texto reconocido..." style="margin-top:12px"></textarea>
+<button style="width:100%;margin-top:10px" onclick="scanToOrder()">Ordenar albarán</button></div></section>
+
+<section id="pedido" class="hidden"><div class="card"><h2>Pedido</h2>
+<textarea id="order" placeholder="Una referencia por línea"></textarea>
+<button style="width:100%;margin-top:10px" onclick="prepare()">Ordenar por ruta</button></div><div id="result"></div></section>
+
+<section id="catalogo" class="hidden"><div class="card"><h2>Catálogo</h2>
+<input id="search" placeholder="Buscar..." oninput="render()"><div id="list"></div></div></section>
+
+<section id="nuevo" class="hidden"><div class="card"><h2>Añadir referencia</h2>
+<input id="name" placeholder="Nombre"><select id="loc" style="margin-top:10px"></select>
+<button style="width:100%;margin-top:10px" onclick="add()">Guardar</button></div></section><div class="space"></div></main>
+
+<nav><button onclick="go('home')">🏠<br>Inicio</button><button onclick="go('scan')">📷<br>Foto</button>
+<button onclick="go('pedido')">📋<br>Pedido</button><button onclick="go('catalogo')">📚<br>Catálogo</button></nav>
+
+<script>
+const START=[{"name": "Chartreuse Verde 55º 0,70", "loc": "3"}, {"name": "Chartreuse Amarillo 40º 0,70", "loc": "3"}, {"name": "St Germain", "loc": "3"}, {"name": "Rivière du Mat Arrange Banana 0,7", "loc": "1"}, {"name": "Rivière du Mat Arrange Vainilla 0,7", "loc": "1"}, {"name": "Rivière du Mat Arrange Coco 0,7", "loc": "1"}, {"name": "Ricard PET (12)", "loc": "1"}, {"name": "Aquarius Limón lata 33 cl", "loc": "D"}, {"name": "Aquarius Naranja lata", "loc": "D"}, {"name": "Heineken lata 50 cl", "loc": "4"}, {"name": "Campo Viejo Crianza Rioja", "loc": "2"}, {"name": "Finca La Mota Rueda Verdejo", "loc": "2"}, {"name": "Cerveza Amstel Radler lata", "loc": "D"}, {"name": "Absolut Five Sabores Minis", "loc": "R"}, {"name": "Safari Licor Africano Litro", "loc": "1"}, {"name": "Gin Citadelle 0,7", "loc": "3"}, {"name": "Vodka Grey Goose Litro", "loc": "1"}, {"name": "Jack Daniel's Gentleman", "loc": "1"}, {"name": "Burgo Viejo Rioja RVA", "loc": "2"}, {"name": "Burgo Viejo Rioja CZA", "loc": "2"}, {"name": "Viña Albali Valdepeñas Promo", "loc": "2"}, {"name": "Viña Albali Crianza Valdepeñas", "loc": "2"}, {"name": "Tomatin Single Malt Legacy", "loc": "T"}, {"name": "Tónica Le Tribute", "loc": "3"}, {"name": "Cerveza Balea Ternua Blonde", "loc": "A1"}, {"name": "TPR Verano Label 5 Litro", "loc": "1"}, {"name": "Ron Basque Runik", "loc": "1"}, {"name": "G-27 Verde Litro", "loc": "1"}, {"name": "Pipermint G-27 Verde Litro", "loc": "1"}, {"name": "Soho 3/4", "loc": "2"}, {"name": "Los Molinos Tempranillo", "loc": "2"}, {"name": "Viña Albali Merlot", "loc": "D"}, {"name": "Blanco Pescador 3/4", "loc": "2"}, {"name": "Los Molinos Verdejo", "loc": "2"}, {"name": "Altos de Tamarón Roble", "loc": "2"}, {"name": "Moscatel Uva d'Or 75 cl", "loc": "3"}, {"name": "Bowmore 12 años 3/4", "loc": "3"}, {"name": "E Carbonell VGEX 5L Lata", "loc": "1"}, {"name": "Hojiblanca Selección Maestra 0,7", "loc": "1"}, {"name": "E Carbonell VGEX Hojiblanca 3/4", "loc": "1"}, {"name": "E Carbonell Picual", "loc": "1"}, {"name": "Carapelli VGEX Bio", "loc": "1"}, {"name": "Aceite La Chinata VGEX Ecológico", "loc": "1"}, {"name": "Patxaran ETS Lapurdi 0,7", "loc": "E"}, {"name": "Rivière du Mat Arrange Ananas 0,7", "loc": "1"}, {"name": "Rivière du Mat Arrange Mangopassion", "loc": "1"}, {"name": "Havana Club 5 Años Especial Vaso", "loc": "2"}, {"name": "Captain Morgan Spiced", "loc": "1"}, {"name": "Ginebra La Gaditana 2L", "loc": "2"}, {"name": "Pastis Prado 2L", "loc": "1"}, {"name": "Gin Gibson", "loc": "1"}, {"name": "Vermouth Blanco Granel 25L", "loc": "3"}, {"name": "Vermouth Rojo Granel 25L", "loc": "3"}];
+const labels={E:'Entrada',D:'Tienda','1':'Pasillo 1',R:'Rones','2':'Pasillo 2','4':'Pasillo 4',T:'Turrones','3':'Pasillo 3',A1:'Altillo 1',A2:'Altillo 2',O:'Oficina'};
+const route=['E','D','1','R','2','4','T','3','A1','A2','O'];
+function cat(){try{return JSON.parse(localStorage.getItem('cat'))||START}catch(e){return START}}
+function save(c){localStorage.setItem('cat',JSON.stringify(c));update()}
+function norm(s){return s.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-z0-9]+/g,' ').trim()}
+function score(a,b){a=norm(a);b=norm(b);if(a.includes(b)||b.includes(a))return 100;let t=b.split(' ').filter(x=>x.length>1),h=t.filter(x=>a.includes(x)).length;return 100*h/Math.max(1,t.length)}
+function match(line){let best=null,bs=0;for(const x of cat()){let s=score(line,x.name);if(s>bs){bs=s;best=x}}return bs>=68?best:null}
+function go(id){document.querySelectorAll('main section').forEach(x=>x.classList.add('hidden'));document.getElementById(id).classList.remove('hidden');if(id==='catalogo')render();if(id==='nuevo')fill();update();scrollTo(0,0)}
+function update(){document.getElementById('count').textContent=cat().length+' referencias'}
+function fill(){let s=document.getElementById('loc');s.innerHTML='';Object.entries(labels).forEach(([k,v])=>s.innerHTML+=`<option value="${k}">${k} — ${v}</option>`)}
+function photoSelected(e){
+  const f=e.target.files && e.target.files[0];
+  if(!f){
+    document.getElementById('ocrStatus').textContent='No se seleccionó ninguna foto.';
+    return;
+  }
+  window.selectedPhoto=f;
+  const p=document.getElementById('preview');
+  p.src=URL.createObjectURL(f);
+  p.style.display='block';
+  document.getElementById('ocrStatus').textContent='✅ Foto cargada. Ahora pulsa “Leer albarán”.';
+  document.getElementById('ocrBar').style.width='0%';
+  document.getElementById('scanText').value='';
+  const b=document.getElementById('readBtn');
+  if(b) b.disabled=false;
+}
+async function readReceipt(){
+  const f=window.selectedPhoto;
+  const status=document.getElementById('ocrStatus');
+  const bar=document.getElementById('ocrBar');
+  const btn=document.getElementById('readBtn');
+  if(!f){status.textContent='Primero selecciona o haz una foto.';return;}
+  if(typeof Tesseract==='undefined'){
+    status.textContent='❌ El motor OCR no se ha cargado. Comprueba Internet y recarga la página.';
+    return;
+  }
+  btn.disabled=true;
+  status.textContent='⏳ Iniciando lector OCR…';
+  bar.style.width='2%';
+  try{
+    const result=await Tesseract.recognize(f,'spa',{
+      logger:m=>{
+        if(m.status==='loading tesseract core') status.textContent='⏳ Cargando lector…';
+        else if(m.status==='initializing tesseract') status.textContent='⏳ Inicializando…';
+        else if(m.status==='loading language traineddata') status.textContent='⏳ Cargando español…';
+        else if(m.status==='initializing api') status.textContent='⏳ Preparando reconocimiento…';
+        else if(m.status==='recognizing text'){
+          const pc=Math.round((m.progress||0)*100);
+          status.textContent='🔎 Leyendo albarán… '+pc+'%';
+          bar.style.width=pc+'%';
+        }
+      }
+    });
+    document.getElementById('scanText').value=result.data.text||'';
+    bar.style.width='100%';
+    status.textContent='✅ Lectura terminada. Revisa el texto y pulsa “Ordenar albarán”.';
+  }catch(err){
+    console.error(err);
+    status.textContent='❌ Error OCR: '+(err && err.message ? err.message : String(err));
+  }finally{
+    btn.disabled=false;
+  }
+}
+function scanToOrder(){document.getElementById('order').value=document.getElementById('scanText').value;go('pedido');prepare()}
+function render(){let q=norm(document.getElementById('search').value);let a=cat().filter(x=>!q||norm(x.name).includes(q)).sort((a,b)=>a.name.localeCompare(b.name,'es'));document.getElementById('list').innerHTML=a.map(x=>`<div class="item"><b>${x.name}</b><span class="pill">${x.loc}</span><div class="small">${labels[x.loc]||''}</div></div>`).join('')}
+function add(){let n=document.getElementById('name').value.trim(),l=document.getElementById('loc').value;if(!n)return alert('Escribe el nombre');let c=cat(),e=c.find(x=>norm(x.name)===norm(n));if(e)e.loc=l;else c.push({name:n,loc:l});save(c);document.getElementById('name').value='';alert('Guardado')}
+function prepare(){let lines=document.getElementById('order').value.split(/\n+/).map(x=>x.trim()).filter(Boolean),g={},u=[];route.forEach(r=>g[r]=[]);
+for(const line of lines){let m=line.match(/^\s*(\d+)\s+(.*)$/),qty=m?m[1]:'',txt=m?m[2]:line,b=match(txt);if(b)g[b.loc].push({qty,name:b.name});else u.push({qty,text:txt})}
+let h='';for(const r of route){if(!g[r].length)continue;h+=`<div class="card route"><h3>${r} · ${labels[r]}</h3>`+g[r].map(x=>`<div class="item">${x.qty?'<b>'+x.qty+'</b> · ':''}${x.name}</div>`).join('')+'</div>'}
+if(u.length){window.pending=u;h+=`<div class="card route warn"><h3>❓ Pendientes</h3>`+u.map((x,i)=>`<div class="item"><b>${x.qty?x.qty+' · ':''}${x.text}</b><div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px">${route.map(r=>`<button class="alt" style="padding:8px 10px;font-size:14px" onclick="learn(${i},'${r}')">${r}</button>`).join('')}</div></div>`).join('')+'</div>';}
+document.getElementById('result').innerHTML=h||'<div class="card">No hay líneas.</div>'}
+function learn(i,loc){
+ const x=window.pending&&window.pending[i]; if(!x)return;
+ let name=x.text.trim();
+ let c=cat(),e=c.find(z=>norm(z.name)===norm(name));
+ if(e)e.loc=loc; else c.push({name:name,loc:loc});
+ save(c);
+ prepare();
+}
+update();fill();
+setTimeout(()=>{
+  if(typeof Tesseract==='undefined'){
+    const s=document.getElementById('ocrStatus');
+    if(s) s.textContent='⚠️ OCR no cargado. Comprueba Internet y recarga.';
+  }
+},1500);
+</script></body></html>
